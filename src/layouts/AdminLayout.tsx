@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, NavLink, Link, useNavigate } from "react-router";
-import { clearAdminSession, getAdminSession } from "../lib/adminAuth";
+import { supabase } from "../lib/supabase";
 
 const sidebarGroups = [
   {
@@ -21,6 +21,7 @@ const sidebarGroups = [
   {
     label: "Competitions",
     links: [
+      { to: "/admin/mahotsav-judging", label: "Mahotsav Judging", icon: "🏅" },
       { to: "/admin/competitions", label: "Competitions", icon: "🏆" },
       { to: "/admin/exam-organizer", label: "Exam Organizer", icon: "✍" },
       { to: "/admin/questions", label: "Questions", icon: "❓" },
@@ -34,18 +35,14 @@ const sidebarGroups = [
     ],
   },
   {
-    label: "Finance",
-    links: [
-      { to: "/admin/students", label: "Donations", icon: "💰" },
-      { to: "/admin/students", label: "Receipts", icon: "🧾" },
-    ],
-  },
-  {
     label: "Content",
     links: [
       { to: "/admin/notices", label: "Notices", icon: "📢" },
-      { to: "/admin/notices", label: "Gallery", icon: "🖼" },
+      { to: "/admin/home-carousel", label: "Homepage Carousel", icon: "▧" },
       { to: "/admin/notices", label: "Library", icon: "📚" },
+      { to: "/admin/chatbot-faqs", label: "Chatbot FAQs", icon: "💬" },
+      { to: "/admin/mock-questions", label: "Mock Questions", icon: "✎" },
+      { to: "/admin/contact-settings", label: "Contact Settings", icon: "☎" },
     ],
   },
   {
@@ -60,14 +57,44 @@ const sidebarGroups = [
 ];
 
 export default function AdminLayout() {
+  const visibleGroups = sidebarGroups;
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [session] = useState(getAdminSession);
+  const [session, setSession] = useState<{ name: string; email: string; role: string } | null>(null);
+  const [checking, setChecking] = useState(true);
   const navigate = useNavigate();
-  const visibleGroups = session.isSuperAdmin
-    ? sidebarGroups
-    : sidebarGroups
-        .map((group) => ({ ...group, links: group.links.filter((link) => session.allowedPaths.some((path) => link.to === path || (path === "/admin" && link.to === "/admin"))) }))
-        .filter((group) => group.links.length > 0);
+
+  useEffect(() => {
+    let active = true;
+    const checkStaff = async () => {
+      if (!supabase) {
+        if (active) { setChecking(false); navigate("/admin/login", { replace: true }); }
+        return;
+      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        if (active) { setChecking(false); navigate("/admin/login", { replace: true }); }
+        return;
+      }
+      const { data: role, error } = await supabase.rpc("current_user_role");
+      if (error || !["admin", "teacher"].includes(role ?? "")) {
+        await supabase.auth.signOut();
+        if (active) { setChecking(false); navigate("/admin/login", { replace: true }); }
+        return;
+      }
+      if (active) {
+        setSession({ name: user.user_metadata?.full_name || user.email || "Staff", email: user.email || "", role: role! });
+        setChecking(false);
+      }
+    };
+    void checkStaff();
+    const { data: { subscription } } = supabase?.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT" && active) navigate("/admin/login", { replace: true });
+    }) ?? { data: { subscription: null } };
+    return () => { active = false; subscription?.unsubscribe(); };
+  }, [navigate]);
+
+  if (checking) return <div className="flex min-h-screen items-center justify-center bg-cream text-brown-mid">Checking staff account…</div>;
+  if (!session) return null;
 
   return (
     <div className="min-h-full flex bg-cream">
@@ -116,7 +143,7 @@ export default function AdminLayout() {
 
         <div className="p-3 border-t border-white/10 shrink-0">
           <button
-            onClick={() => { clearAdminSession(); navigate("/admin/login"); }}
+            onClick={async () => { await supabase?.auth.signOut(); navigate("/admin/login", { replace: true }); }}
             className="flex items-center gap-3 text-xs text-white/50 hover:text-red-300 transition-colors w-full"
           >
             <span className="w-5 text-center">🚪</span>

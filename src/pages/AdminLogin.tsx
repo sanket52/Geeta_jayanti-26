@@ -1,130 +1,101 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { authenticateAdmin, getAdminAccount, saveAdminSession } from "../lib/adminAuth";
-import type { AdminSession } from "../lib/adminAuth";
+import OTPVerification from "../components/OTPVerification";
+import { supabase } from "../lib/supabase";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"password" | "otp">("password");
+  const [otpSent, setOtpSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [pendingSession, setPendingSession] = useState<(AdminSession & { mobile: string }) | null>(null);
-  const [generatedOtp, setGeneratedOtp] = useState("");
-  const [otp, setOtp] = useState("");
 
-  const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const session = mode === "password"
-      ? authenticateAdmin(form.email, form.password)
-      : getAdminAccount(form.email);
-    if (!session) {
-      setError(mode === "password" ? "Incorrect email or password, or this ERP account is inactive." : "No active ERP account was found for this email.");
-      return;
+  const finishStaffSignIn = async () => {
+    if (!supabase) throw new Error("Supabase Auth is not configured.");
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw new Error("The verified session could not be loaded. Please sign in again.");
+    const { data: role, error: profileError } = await supabase.rpc("current_user_role");
+    if (profileError) {
+      await supabase.auth.signOut();
+      throw new Error(`The staff role check failed: ${profileError.message}. Apply the Supabase schema and staff security SQL, then try again.`);
     }
-    if (mode === "password") {
-      const { mobile: _, ...adminSession } = session;
-      saveAdminSession(adminSession);
-      navigate("/admin");
-      return;
+    if (!["admin", "teacher"].includes(role ?? "")) {
+      await supabase.auth.signOut();
+      throw new Error(role === "pending_teacher"
+        ? "Your teacher account is waiting for administrator approval."
+        : "This account is not assigned an admin or approved teacher role. Ask your administrator to configure the account in Supabase.");
     }
-    setPendingSession(session);
-    setGeneratedOtp(createOtp());
-    setOtp("");
+    navigate("/admin", { replace: true });
   };
 
-  const verifyOtp = (event: React.FormEvent) => {
+  const signInWithPassword = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!pendingSession || otp !== generatedOtp) {
-      setError("Incorrect WhatsApp OTP. Please check the six-digit code.");
+    setError("");
+    if (!supabase) { setError("Supabase Auth is not configured."); return; }
+    setSubmitting(true);
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    if (signInError) {
+      setSubmitting(false);
+      setError(signInError.message);
       return;
     }
-    const { mobile: _, ...session } = pendingSession;
-    saveAdminSession(session);
-    navigate("/admin");
+    try {
+      await finishStaffSignIn();
+    } catch (verifyError) {
+      setError(verifyError instanceof Error ? verifyError.message : "Unable to verify staff access.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  if (pendingSession) {
-    const [name, domain] = pendingSession.email.split("@");
-    const maskedEmail = `${name.slice(0, 2)}${"*".repeat(Math.max(2, name.length - 2))}@${domain}`;
-    return (
-      <div className="min-h-screen bg-brown flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
-          <div className="bg-cream/10 backdrop-blur border border-white/10 rounded-2xl p-8 shadow-2xl">
-            <div className="w-14 h-14 rounded-full bg-gold/20 text-gold border border-gold/20 flex items-center justify-center font-bold text-xl mx-auto">@</div>
-            <h1 style={{ fontFamily: "var(--font-display)" }} className="text-2xl font-bold text-cream text-center mt-5">Email OTP Verification</h1>
-            <p className="text-cream/60 text-sm text-center mt-2">A six-digit OTP was sent to {maskedEmail} for {pendingSession.name}.</p>
-            <form onSubmit={verifyOtp} className="mt-6 space-y-4">
-              <label className="block">
-                <span className="block text-xs font-semibold text-cream/70 mb-1.5">Email OTP</span>
-                <input
-                  value={otp}
-                  onChange={(event) => { setOtp(event.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
-                  inputMode="numeric"
-                  autoFocus
-                  placeholder="Enter 6-digit OTP"
-                  className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-center tracking-widest text-lg text-cream focus:border-gold focus:outline-none"
-                />
-              </label>
-              <div className="bg-gold/10 border border-gold/20 rounded-lg p-3 text-center">
-                <p className="text-xs text-gold">Testing OTP: <strong className="tracking-widest">{generatedOtp}</strong></p>
-              </div>
-              {error && <p className="text-xs text-red-300 bg-red-950/30 border border-red-400/20 rounded-lg p-3">{error}</p>}
-              <button type="submit" className="w-full bg-gold hover:bg-gold-light text-brown py-3.5 rounded-xl font-bold text-sm">Verify & Open ERP</button>
-            </form>
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              <button onClick={() => { setGeneratedOtp(createOtp()); setError(""); }} className="text-xs text-gold hover:underline">Resend OTP</button>
-              <button onClick={() => { setPendingSession(null); setError(""); }} className="text-xs text-cream/60 hover:text-cream">Change account</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  const sendCode = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    if (!supabase) { setError("Supabase Auth is not configured."); return; }
+    setSubmitting(true);
+    const { error: sendError } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: false },
+    });
+    setSubmitting(false);
+    if (sendError) { setError(sendError.message); return; }
+    setOtpSent(true);
+  };
+
+  if (otpSent) {
+    return <OTPVerification email={email.trim().toLowerCase()} purpose="login" onVerified={finishStaffSignIn} onBack={() => setOtpSent(false)} />;
   }
 
   return (
-    <div className="min-h-screen bg-brown flex items-center justify-center px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-brown px-4 py-12">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-full bg-gold flex items-center justify-center text-brown text-2xl font-bold mx-auto mb-3">ॐ</div>
+        <header className="mb-8 text-center">
+          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-gold text-2xl font-bold text-brown">ॐ</div>
           <h1 style={{ fontFamily: "var(--font-display)" }} className="text-2xl font-bold text-cream">Admin ERP Login</h1>
-          <p className="text-cream/50 text-sm mt-1">Authorized Personnel Only</p>
-        </div>
-
-        <div className="bg-cream/10 backdrop-blur border border-white/10 rounded-2xl p-8 shadow-2xl">
-          <div className="grid grid-cols-2 bg-white/5 rounded-xl p-1 mb-6">
-            <button type="button" onClick={() => { setMode("password"); setError(""); }} className={`py-2.5 rounded-lg text-xs font-semibold transition-colors ${mode === "password" ? "bg-gold text-brown" : "text-cream/60 hover:text-cream"}`}>Password Login</button>
-            <button type="button" onClick={() => { setMode("otp"); setError(""); }} className={`py-2.5 rounded-lg text-xs font-semibold transition-colors ${mode === "otp" ? "bg-gold text-brown" : "text-cream/60 hover:text-cream"}`}>Email OTP</button>
+          <p className="mt-1 text-sm text-cream/55">Authorized admin and staff access</p>
+        </header>
+        <div className="rounded-2xl border border-white/10 bg-cream/10 p-8 shadow-2xl">
+          <div className="mb-6 grid grid-cols-2 rounded-xl bg-white/5 p-1">
+            <button type="button" onClick={() => { setMode("password"); setError(""); }} className={`rounded-lg py-2.5 text-xs font-semibold transition-colors ${mode === "password" ? "bg-gold text-brown" : "text-cream/60 hover:text-cream"}`}>Password Login</button>
+            <button type="button" onClick={() => { setMode("otp"); setError(""); }} className={`rounded-lg py-2.5 text-xs font-semibold transition-colors ${mode === "otp" ? "bg-gold text-brown" : "text-cream/60 hover:text-cream"}`}>Email OTP</button>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-xs font-semibold text-cream/70 mb-1.5">Admin Email</label>
-              <input type="email" required placeholder="admin@gurukul.edu"
-                value={form.email} onChange={(e) => { setForm({ ...form, email: e.target.value }); setError(""); }}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-sm text-cream placeholder:text-white/30 focus:border-gold focus:outline-none" />
-            </div>
-            {mode === "password" && <div>
-              <label className="block text-xs font-semibold text-cream/70 mb-1.5">Password</label>
-              <input type="password" required placeholder="••••••••"
-                value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-sm text-cream placeholder:text-white/30 focus:border-gold focus:outline-none" />
-            </div>}
-            {error && <p className="text-xs text-red-300 bg-red-950/30 border border-red-400/20 rounded-lg p-3">{error}</p>}
-            <button type="submit"
-              className="w-full bg-gold hover:bg-gold-light text-brown py-3.5 rounded-xl font-bold text-sm transition-colors shadow-lg">
-              {mode === "password" ? "Login with Password" : "Send Email OTP"}
-            </button>
+          <form onSubmit={mode === "password" ? signInWithPassword : sendCode}>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-cream/70">Admin Email</span>
+            <input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.org" className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-cream outline-none placeholder:text-white/30 focus:border-gold" />
+          </label>
+          {mode === "password" && <label className="mt-4 block">
+            <span className="mb-1.5 block text-xs font-semibold text-cream/70">Password</span>
+            <input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-cream outline-none placeholder:text-white/30 focus:border-gold" />
+          </label>}
+          {error && <p role="alert" className="mt-4 rounded-lg border border-red-400/20 bg-red-950/30 p-3 text-xs text-red-200">{error}</p>}
+          <button type="submit" disabled={submitting} className="mt-5 w-full rounded-xl bg-gold py-3.5 text-sm font-bold text-brown hover:bg-gold-light disabled:opacity-50">{submitting ? (mode === "password" ? "Signing in…" : "Sending code…") : (mode === "password" ? "Login with Password" : "Send secure email code")}</button>
           </form>
-
-          <div className="mt-4 text-center">
-            <p className="text-cream/40 text-xs">This login is monitored. Unauthorized access is prohibited.</p>
-          </div>
+          <p className="mt-4 text-center text-xs text-cream/45">Staff access is assigned by a project administrator. New accounts cannot grant themselves staff roles.</p>
         </div>
-
-        <div className="mt-6 text-center">
-          <Link to="/login" className="text-cream/50 text-sm hover:text-cream transition-colors">← Student Portal Login</Link>
-        </div>
+        <div className="mt-6 text-center"><Link to="/login" className="text-sm text-cream/55 hover:text-cream">← Student Portal Login</Link></div>
       </div>
     </div>
   );

@@ -136,7 +136,7 @@ export default function AdminStatistics() {
               <CartesianGrid {...CHART_OPTS.grid} />
               <XAxis dataKey="month" tick={CHART_OPTS.tick} />
               <YAxis tick={CHART_OPTS.tick} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}K`} />
-              <Tooltip {...CHART_OPTS.tooltip} formatter={(v: number) => [`₹${v.toLocaleString("en-IN")}`, "Donations"]} />
+              <Tooltip {...CHART_OPTS.tooltip} formatter={(value) => [`₹${Number(value ?? 0).toLocaleString("en-IN")}`, "Donations"]} />
               <Line type="monotone" dataKey="amount" stroke="#E07820" strokeWidth={2.5} dot={{ fill: "#E07820", r: 4 }} name="Amount" />
             </LineChart>
           </ResponsiveContainer>

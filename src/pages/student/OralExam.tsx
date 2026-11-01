@@ -1,6 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { getStudentRecord } from "../../lib/studentRecord";
-import { recordOralExam } from "../../lib/erpStore";
 import { uploadOralSubmission } from "../../lib/oralExamSubmissions";
 
 type Phase = "instructions" | "question" | "recording" | "preview" | "uploading" | "submitted";
@@ -23,7 +21,7 @@ function formatTime(s: number) {
 }
 
 export default function OralExam() {
-  const [studentRecord] = useState(getStudentRecord);
+  const [submittedStudent, setSubmittedStudent] = useState<{ registrationNumber: string; fullName: string } | null>(null);
   const [phase, setPhase] = useState<Phase>("instructions");
   const [questionIdx] = useState(0);
   const [prepCountdown, setPrepCountdown] = useState(0);
@@ -142,22 +140,20 @@ export default function OralExam() {
     setUploadProgress(0);
     setUploadError(null);
     try {
-      await uploadOralSubmission({
+      const savedSubmission = await uploadOralSubmission({
         blob: recordedBlob,
-        registrationNumber: studentRecord.registrationNumber,
-        studentName: studentRecord.fullName,
         subject: q.subject,
         question: q.english,
       });
+      setSubmittedStudent({ registrationNumber: savedSubmission.registration_number, fullName: savedSubmission.student_name });
       setUploadProgress(100);
-      recordOralExam(studentRecord.registrationNumber);
       setPhase("submitted");
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Video upload failed. Please try again.");
       setPhase("preview");
       setUploadProgress(0);
     }
-  }, [recordedBlob, studentRecord.registrationNumber, studentRecord.fullName, q.subject, q.english]);
+  }, [recordedBlob, q.subject, q.english]);
 
   const retake = useCallback(() => {
     if (recordedUrl) URL.revokeObjectURL(recordedUrl);
@@ -182,7 +178,7 @@ export default function OralExam() {
           </p>
           <div className="bg-cream-dark rounded-xl p-5 text-left text-sm space-y-2.5 mb-6 max-w-sm mx-auto">
             {[
-              ["Registration No.", studentRecord.registrationNumber],
+              ["Registration No.", submittedStudent?.registrationNumber ?? "—"],
               ["Submitted At", new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })],
               ["File Size", recordedBlob ? `${(recordedBlob.size / 1024 / 1024).toFixed(2)} MB` : "—"],
               ["Evaluation Status", "Pending Review"],
@@ -433,9 +429,9 @@ export default function OralExam() {
             <div className="space-y-3">
               {[
                 { step: "Enable camera & mic", done: cameraActive, current: !cameraActive && phase === "instructions" },
-                { step: `Preparation (${formatTime(q.prepTime)})`, done: phase === "recording" || phase === "preview", current: phase === "question" },
-                { step: `Record response (max ${formatTime(q.maxDuration)})`, done: phase === "preview", current: phase === "recording" },
-                { step: "Preview & submit", done: false, current: phase === "preview" },
+                { step: `Preparation (${formatTime(q.prepTime)})`, done: phase === "recording", current: phase === "question" },
+                { step: `Record response (max ${formatTime(q.maxDuration)})`, done: false, current: phase === "recording" },
+                { step: "Preview & submit", done: false, current: false },
               ].map((s, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${

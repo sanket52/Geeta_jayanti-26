@@ -118,7 +118,7 @@ export default function Donate() {
               {[
                 { key: "name", label: "Full Name *", placeholder: "Your full name" },
                 { key: "email", label: "Email Address *", placeholder: "you@example.com", type: "email" },
-                { key: "mobile", label: "Mobile Number *", placeholder: "+91 98765 43210", type: "tel" },
+                { key: "mobile", label: "Mobile Number *", placeholder: "Your phone number", type: "tel" },
                 { key: "pan", label: "PAN Number (optional)", placeholder: "ABCDE1234F" },
               ].map(({ key, label, placeholder, type = "text" }) => (
                 <div key={key}>

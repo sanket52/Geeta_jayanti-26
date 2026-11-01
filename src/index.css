@@ -2,6 +2,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 @import 'tailwindcss';
 
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 @theme {
   --color-cream: #FDF6EE;
   --color-cream-dark: #F2E4CC;
@@ -16,6 +26,7 @@
   --color-brown-mid: #6B4226;
   --color-brown-light: #A07050;
   --color-green-vedic: #2D5016;
+  --color-navy: #172A3A;
   --font-display: 'Lora', Georgia, serif;
   --font-body: 'Poppins', system-ui, sans-serif;
 }

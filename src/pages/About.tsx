@@ -1,147 +1,25 @@
+import { useEffect } from "react";
 import { Link } from "react-router";
 
-const teachers = [
-  { name: "Pandit Ramakrishna Tripathi", role: "Principal & Head of Vedas", exp: "35 years", initial: "R" },
-  { name: "Dr. Savita Shastri", role: "Sanskrit Grammar (Vyakaran)", exp: "22 years", initial: "S" },
-  { name: "Acharya Suresh Pandey", role: "Vedic Mathematics & Astronomy", exp: "28 years", initial: "A" },
-  { name: "Dr. Meena Mishra", role: "Indian Philosophy & Culture", exp: "18 years", initial: "M" },
+const learningAreas = [
+  { icon: "ॐ", label: "Vedic learning", title: "Vedas and Vedangas", description: "Explore India's knowledge traditions through guided study and reflection." },
+  { icon: "अ", label: "Language", title: "Sanskrit studies", description: "Build familiarity with Sanskrit language and classical texts." },
+  { icon: "गीता", label: "Reflection", title: "Shrimad Bhagavad Gita", description: "Read and discuss ideas from the Gita and their relevance to daily life." },
+  { icon: "⌘", label: "Digital skills", title: "Computer education", description: "Develop basic computer knowledge, digital literacy and technology awareness." },
 ];
 
 export default function About() {
-  return (
-    <div>
-      {/* Hero */}
-      <section className="bg-maroon-dark text-cream py-16 px-6 text-center">
-        <div className="max-w-3xl mx-auto">
-          <span className="text-gold text-xs font-semibold uppercase tracking-widest">About Us</span>
-          <h1 style={{ fontFamily: "var(--font-display)" }} className="text-4xl font-bold mt-2 mb-4">
-            Our Sacred Heritage & Mission
-          </h1>
-          <p className="text-cream/70 leading-relaxed">
-            Founded in 2013 in Greater Noida, Uttar Pradesh, under the guidance of revered Sanskrit scholars, our Gurukul carries forward
-            the 5000-year-old tradition of Vedic learning in a modern, accessible form.
-          </p>
-        </div>
-      </section>
+  useEffect(() => { document.title = "About the Gurukul | Geeta Jayanti Mahotsav 2026"; const meta = document.querySelector('meta[name="description"]'); meta?.setAttribute("content", "Learn about the educational approach of Maharshi Panini Ved-Vedang Vidyapeeth Gurukul in Greater Noida."); }, []);
+  return <div>
+    <section className="relative overflow-hidden bg-maroon-dark px-5 py-20 text-cream sm:py-28"><div aria-hidden="true" className="absolute -right-16 -top-24 h-80 w-80 rounded-full border border-gold/15"/><div className="relative mx-auto max-w-5xl"><p className="text-xs font-bold uppercase tracking-[0.24em] text-gold">About the organization</p><h1 className="mt-4 max-w-4xl text-4xl font-bold leading-tight sm:text-6xl">Maharshi Panini Ved-Vedang Vidyapeeth Gurukul</h1><p className="mt-5 max-w-2xl text-base leading-relaxed text-cream/75 sm:text-lg">A learning approach that brings traditional knowledge, values and modern computer education together.</p><p className="mt-5 text-sm text-cream/60">Greater Noida, Uttar Pradesh</p></div></section>
 
-      {/* History & Vision */}
-      <section className="py-20 bg-cream">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-3 gap-10">
-          {[
-            {
-              icon: "📜",
-              title: "Our History",
-              body: "Maharshi Panini Ved Vedang Vidhyapeeth Gurukul was established in 2013 by dedicated Sanskrit scholars and social workers in Greater Noida, Uttar Pradesh, with the vision of making authentic Vedic education accessible to every learner.",
-            },
-            {
-              icon: "👁",
-              title: "Our Vision",
-              body: "To create a global center of excellence for Vedic and Sanskrit education where traditional wisdom and modern knowledge converge to produce scholars who are both spiritually grounded and professionally capable.",
-            },
-            {
-              icon: "🎯",
-              title: "Our Mission",
-              body: "To preserve and propagate the authentic knowledge of the Vedas, Vedangas, Sanskrit grammar and Indian philosophy through structured education, competitions, and accessible digital learning resources.",
-            },
-          ].map((item) => (
-            <div key={item.title} className="bg-cream-dark rounded-2xl p-8 border border-gold/20">
-              <div className="text-4xl mb-4">{item.icon}</div>
-              <h3 style={{ fontFamily: "var(--font-display)" }} className="text-xl font-bold text-maroon mb-3">
-                {item.title}
-              </h3>
-              <p className="text-brown-mid leading-relaxed text-sm">{item.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+    <section className="bg-cream px-5 py-16 sm:py-20"><div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center"><div><p className="text-xs font-bold uppercase tracking-widest text-gold">Our vision</p><h2 className="mt-3 text-3xl font-bold text-maroon sm:text-4xl">Learning with roots and reach</h2></div><div className="rounded-2xl border border-gold/20 bg-white p-6 shadow-sm sm:p-8"><p className="text-lg leading-relaxed text-brown">To provide students with meaningful education that connects India’s traditional knowledge and values with modern learning.</p><p className="mt-4 leading-relaxed text-brown-mid">The Gurukul’s educational approach values curiosity, steady practice, discipline and thoughtful character development alongside knowledge.</p></div></div></section>
 
-      {/* Vedic Education */}
-      <section className="py-20 bg-maroon text-cream">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <span className="text-gold text-xs font-semibold uppercase tracking-widest">Curriculum</span>
-            <h2 style={{ fontFamily: "var(--font-display)" }} className="text-3xl font-bold mt-2">
-              Vedic Education Framework
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {[
-              { name: "Rigveda", icon: "🔥", desc: "Hymns to the Divine" },
-              { name: "Samaveda", icon: "🎵", desc: "Songs & Melodies" },
-              { name: "Yajurveda", icon: "🙏", desc: "Ritual Formulas" },
-              { name: "Atharvaveda", icon: "💫", desc: "Knowledge of Life" },
-              { name: "Vyakaran", icon: "📝", desc: "Sanskrit Grammar" },
-              { name: "Jyotish", icon: "⭐", desc: "Vedic Astrology" },
-            ].map((v) => (
-              <div key={v.name} className="text-center bg-white/10 rounded-xl p-5 hover:bg-white/15 transition-colors">
-                <div className="text-3xl mb-2">{v.icon}</div>
-                <div className="font-semibold text-gold text-sm mb-1">{v.name}</div>
-                <div className="text-cream/60 text-xs">{v.desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+    <section className="bg-cream-dark px-5 py-16 sm:py-20"><div className="mx-auto max-w-7xl"><div className="mb-10 max-w-2xl"><p className="text-xs font-bold uppercase tracking-widest text-saffron">Two learning worlds, one student journey</p><h2 className="mt-3 text-3xl font-bold text-maroon">Vedic knowledge and modern computer education</h2><p className="mt-3 text-sm leading-relaxed text-brown-mid">Students can build a connection with classical learning while gaining useful digital knowledge for a changing world.</p></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{learningAreas.map((area, index) => <article key={area.title} className="group overflow-hidden rounded-2xl border border-white bg-cream shadow-sm transition hover:-translate-y-1 hover:shadow-lg"><div className={`relative flex h-36 items-center justify-center overflow-hidden ${index % 2 === 0 ? "bg-maroon" : "bg-navy"}`}><span aria-hidden="true" className="absolute h-32 w-32 rounded-full border border-gold/25"/><span aria-hidden="true" className="absolute h-24 w-24 rounded-full border border-gold/25"/><span className="relative flex h-16 min-w-16 items-center justify-center rounded-2xl border border-gold/35 bg-cream/10 px-3 text-2xl font-semibold text-gold">{area.icon}</span><span className="absolute bottom-3 left-4 text-[10px] font-bold uppercase tracking-widest text-cream/65">{area.label}</span></div><div className="p-5"><h3 className="text-lg font-bold text-brown">{area.title}</h3><p className="mt-2 text-sm leading-relaxed text-brown-mid">{area.description}</p></div></article>)}</div><p className="mt-4 text-xs text-brown-mid">Illustrated learning themes; no organization photographs were present in the project assets.</p></div></section>
 
-      {/* Teachers */}
-      <section className="py-20 bg-cream">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <span className="text-gold text-xs font-semibold uppercase tracking-widest">Faculty</span>
-            <h2 style={{ fontFamily: "var(--font-display)" }} className="text-3xl font-bold text-brown mt-2">Our Respected Teachers</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {teachers.map((t) => (
-              <div key={t.name} className="bg-cream border border-cream-dark rounded-2xl p-6 text-center hover:border-gold/40 hover:shadow-lg transition-all">
-                <div className="w-16 h-16 rounded-full bg-maroon text-cream flex items-center justify-center text-2xl font-bold mx-auto mb-4">
-                  {t.initial}
-                </div>
-                <h4 className="font-semibold text-brown mb-1">{t.name}</h4>
-                <p className="text-sm text-maroon font-medium mb-2">{t.role}</p>
-                <p className="text-xs text-brown-mid">{t.exp} experience</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+    <section className="bg-white px-5 py-16 sm:py-20"><div className="mx-auto max-w-6xl"><div className="mx-auto mb-10 max-w-2xl text-center"><p className="text-xs font-bold uppercase tracking-widest text-gold">Our educational approach</p><h2 className="mt-3 text-3xl font-bold text-maroon">Supporting the whole student</h2></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">{[{ title: "Traditional knowledge", text: "Engage with Vedas, Vedangas, Sanskrit and Indian knowledge traditions." }, { title: "Modern technology", text: "Build computer familiarity and confidence with digital learning." }, { title: "Character development", text: "Practise reflection, responsibility and respect for others." }, { title: "Discipline and values", text: "Cultivate consistency, care and attention in learning." }, { title: "Holistic growth", text: "Bring knowledge, skills and personal development together." }].map((item, i) => <article key={item.title} className="rounded-2xl border border-cream-dark bg-cream p-5"><span className="text-sm font-bold text-saffron">0{i + 1}</span><h3 className="mt-3 font-bold text-brown">{item.title}</h3><p className="mt-2 text-sm leading-relaxed text-brown-mid">{item.text}</p></article>)}</div></div></section>
 
-      {/* Achievements */}
-      <section className="py-16 bg-cream-dark">
-        <div className="max-w-5xl mx-auto px-6 text-center">
-          <h2 style={{ fontFamily: "var(--font-display)" }} className="text-3xl font-bold text-brown mb-8">
-            Our Achievements
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { icon: "🏆", title: "National Recognition", body: "Awarded 'Best Vedic Institution' by Sanskrit Bharati, New Delhi — 2024" },
-              { icon: "📚", title: "Digital Library", body: "Over 2,000 Sanskrit texts and Vedic manuscripts digitized and made freely available" },
-              { icon: "🌏", title: "Global Reach", body: "Students from 18 states and 5 countries have participated in our competitions" },
-            ].map((a) => (
-              <div key={a.title} className="bg-cream rounded-xl p-6 border border-gold/20">
-                <div className="text-4xl mb-3">{a.icon}</div>
-                <h4 style={{ fontFamily: "var(--font-display)" }} className="font-semibold text-brown mb-2">{a.title}</h4>
-                <p className="text-sm text-brown-mid">{a.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-12 bg-maroon-dark text-center text-cream">
-        <div className="max-w-xl mx-auto px-6">
-          <h3 style={{ fontFamily: "var(--font-display)" }} className="text-2xl font-bold mb-4">Join Our Community</h3>
-          <p className="text-cream/70 mb-6 text-sm">Register for our competition or support our mission through donation.</p>
-          <div className="flex gap-4 justify-center">
-            <Link to="/register" className="px-6 py-3 bg-saffron text-cream font-semibold rounded hover:bg-saffron-light transition-all text-sm">
-              Register Now
-            </Link>
-            <Link to="/donate" className="px-6 py-3 border-2 border-cream/40 text-cream font-semibold rounded hover:bg-cream/10 transition-all text-sm">
-              Donate
-            </Link>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
+    <section className="bg-maroon px-5 py-14 text-cream"><div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 sm:flex-row sm:items-center"><div><p className="text-xs font-bold uppercase tracking-widest text-gold">About the organization</p><h2 className="mt-2 text-2xl font-bold">Operated by Maharshi Panini Dharmarth Trust</h2><p className="mt-2 text-sm text-cream/65">Maharshi Panini Ved-Vedang Vidyapeeth Gurukul · Greater Noida</p></div><Link to="/contact" className="rounded-xl border border-cream/30 px-5 py-3 text-sm font-semibold transition hover:bg-white/10">Contact the Gurukul</Link></div></section>
+    <section className="bg-saffron px-5 py-12 text-center text-brown"><div className="mx-auto max-w-3xl"><h2 className="text-2xl font-bold">Explore learning through the Mahotsav</h2><p className="mt-2 text-sm">Read about the National Geeta Knowledge Quiz and practise with the separate sample mock test.</p><div className="mt-5 flex flex-wrap justify-center gap-3"><Link to="/exam" className="rounded-xl bg-maroon px-5 py-3 text-sm font-bold text-cream hover:bg-maroon-dark">Explore Exam</Link><Link to="/competitions" className="rounded-xl border border-brown/20 bg-white/50 px-5 py-3 text-sm font-bold text-brown hover:bg-white">View Competitions</Link></div></div></section>
+  </div>;
 }

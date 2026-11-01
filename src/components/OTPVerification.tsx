@@ -6,10 +6,9 @@ interface OTPVerificationProps {
   purpose?: "registration" | "login" | "reset";
   onVerified: () => void | Promise<void>;
   onBack?: () => void;
-  useSupabaseAuth?: boolean;
 }
 
-export default function OTPVerification({ email, purpose = "registration", onVerified, onBack, useSupabaseAuth = false }: OTPVerificationProps) {
+export default function OTPVerification({ email, purpose = "registration", onVerified, onBack }: OTPVerificationProps) {
   const [digits, setDigits] = useState(["", "", "", "", "", ""]);
   const [cooldown, setCooldown] = useState(60);
   const [sending, setSending] = useState(false);
@@ -17,6 +16,7 @@ export default function OTPVerification({ email, purpose = "registration", onVer
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const verifyingRef = useRef(false);
 
   /* Countdown */
   useEffect(() => {
@@ -57,76 +57,70 @@ export default function OTPVerification({ email, purpose = "registration", onVer
   };
 
   const resend = async () => {
+    if (sending || cooldown > 0) return;
+    if (!supabase) {
+      setError("Email verification is not configured. Please contact the event team.");
+      setSendStatus("error");
+      return;
+    }
     setSending(true);
     setSendStatus("idle");
-    if (useSupabaseAuth) {
-      if (!supabase) {
-        setError("Supabase Auth is not configured.");
-        setSendStatus("error");
-        setSending(false);
-        return;
-      }
-      const { error: sendError } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: { shouldCreateUser: purpose === "registration" },
-      });
+    setError("");
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const { error: sendError } = purpose === "reset"
+        ? await supabase.auth.resetPasswordForEmail(normalizedEmail)
+        : await supabase.auth.signInWithOtp({
+          email: normalizedEmail,
+          options: { shouldCreateUser: purpose === "registration" },
+        });
       if (sendError) {
         setError(sendError.message);
         setSendStatus("error");
-        setSending(false);
         return;
       }
-    } else {
-      await new Promise((r) => setTimeout(r, 1200));
+      setSendStatus("sent");
+      setCooldown(60);
+      setDigits(["", "", "", "", "", ""]);
+      inputRefs.current[0]?.focus();
+    } catch {
+      setError("The verification email could not be sent. Please try again later.");
+      setSendStatus("error");
+    } finally {
+      setSending(false);
     }
-    setSending(false);
-    setSendStatus("sent");
-    setCooldown(60);
-    setDigits(["", "", "", "", "", ""]);
-    inputRefs.current[0]?.focus();
   };
 
   const verify = useCallback(async () => {
     const code = digits.join("");
     if (code.length < 6) { setError("Please enter all 6 digits."); return; }
+    if (verifyingRef.current) return;
+    if (!supabase) { setError("Email verification is not configured."); return; }
+    verifyingRef.current = true;
     setVerifying(true);
     setError("");
-    if (useSupabaseAuth) {
-      if (!supabase) {
-        setError("Supabase Auth is not configured.");
-        setVerifying(false);
-        return;
-      }
+    try {
       const { error: verifyError } = await supabase.auth.verifyOtp({
         email: email.trim().toLowerCase(),
         token: code,
-        type: "email",
+        type: purpose === "reset" ? "recovery" : "email",
       });
       if (verifyError) {
-        setError("That code is invalid or expired. Please try again.");
+        setError(/expired/i.test(verifyError.message)
+          ? "This code has expired. Request a new code and try again."
+          : "That code is invalid. Check it and try again.");
         setDigits(["", "", "", "", "", ""]);
         inputRefs.current[0]?.focus();
-        setVerifying(false);
         return;
       }
-      try {
-        await onVerified();
-      } catch (verificationError) {
-        setError(verificationError instanceof Error ? verificationError.message : "This account could not be verified.");
-      }
+      await onVerified();
+    } catch (verificationError) {
+      setError(verificationError instanceof Error ? verificationError.message : "Verification failed. Please try again.");
+    } finally {
       setVerifying(false);
-      return;
+      verifyingRef.current = false;
     }
-    await new Promise((r) => setTimeout(r, 1500));
-    setVerifying(false);
-    if (code === "000000") {
-      setError("Invalid OTP. Please try again.");
-      setDigits(["", "", "", "", "", ""]);
-      inputRefs.current[0]?.focus();
-    } else {
-      onVerified();
-    }
-  }, [digits, email, onVerified, purpose, useSupabaseAuth]);
+  }, [digits, email, onVerified, purpose]);
 
   /* Auto-submit when all 6 digits filled */
   useEffect(() => {
@@ -152,7 +146,7 @@ export default function OTPVerification({ email, purpose = "registration", onVer
               <div className="text-sm">
                 <div className="font-semibold text-green-800">OTP Sent Successfully</div>
                 <div className="text-green-700 mt-0.5">
-                  A 6-digit verification code has been sent to{" "}
+                  A 6-digit verification code was sent to{" "}
                   <span className="font-semibold">{maskedEmail}</span>.
                   Check your inbox and spam folder.
                 </div>
@@ -241,7 +235,7 @@ export default function OTPVerification({ email, purpose = "registration", onVer
           </div>
 
           <div className="mt-6 pt-5 border-t border-cream-dark flex flex-col gap-2 text-center text-xs text-brown-mid">
-            <p>OTP expires in 10 minutes. For security, never share this code with anyone.</p>
+            <p>Your OTP expires according to the event's authentication settings. For security, never share this code with anyone.</p>
             {onBack && (
               <button onClick={onBack} className="text-maroon font-semibold hover:underline text-sm mt-1">
                 ← Change Email / Go Back

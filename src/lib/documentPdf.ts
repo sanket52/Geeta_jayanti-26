@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import type { jsPDF as JsPDF } from "jspdf";
-import { createVerificationUrl, type StudentRecord } from "./studentRecord";
+import QRCode from "qrcode";
+import { createVerificationUrl, type StudentRecord, type VerificationDocumentType } from "./studentRecord";
 
 const maroon: [number, number, number] = [92, 15, 15];
 const gold: [number, number, number] = [200, 144, 43];
@@ -19,8 +20,43 @@ function addField(doc: JsPDF, label: string, value: string, x: number, y: number
   doc.text(doc.splitTextToSize(value || "—", width), x, y + 5);
 }
 
-function downloadRegistrationDocument(record: StudentRecord, title: string, filename: string, acknowledgement: string) {
+function createQrCodeDataUrl(value: string) {
+  const qr = QRCode.create(value, { errorCorrectionLevel: "M" });
+  const quietZone = 4;
+  const scale = 5;
+  const canvas = document.createElement("canvas");
+  const dimension = (qr.modules.size + quietZone * 2) * scale;
+  canvas.width = dimension;
+  canvas.height = dimension;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not prepare the document verification code.");
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, dimension, dimension);
+  context.fillStyle = "#000000";
+  for (let row = 0; row < qr.modules.size; row += 1) {
+    for (let column = 0; column < qr.modules.size; column += 1) {
+      if (qr.modules.get(row, column)) {
+        context.fillRect((column + quietZone) * scale, (row + quietZone) * scale, scale, scale);
+      }
+    }
+  }
+  return canvas.toDataURL("image/png");
+}
+
+function downloadRegistrationDocument(
+  record: StudentRecord,
+  title: string,
+  filename: string,
+  acknowledgement: string,
+  verificationType: Extract<VerificationDocumentType, "registration-confirmation" | "participation-receipt">,
+) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const verificationUrl = createVerificationUrl(verificationType, record);
+  const qr = createQrCodeDataUrl(verificationUrl);
+  const documentReference = verificationType === "registration-confirmation"
+    ? `${record.registrationNumber}-REG`
+    : `${record.registrationNumber}-PART`;
 
   doc.setFillColor(...cream);
   doc.rect(0, 0, 210, 297, "F");
@@ -38,22 +74,38 @@ function downloadRegistrationDocument(record: StudentRecord, title: string, file
 
   doc.setDrawColor(...gold);
   doc.setLineWidth(0.8);
-  doc.roundedRect(15, 62, 180, 143, 3, 3, "S");
-  addField(doc, "Student Name", record.fullName, 25, 80, 155);
-  addField(doc, "Registration Number", record.registrationNumber, 25, 103, 75);
-  addField(doc, "Father's Name", record.fatherName, 110, 103, 75);
-  addField(doc, "Competition", record.competition, 25, 126, 155);
-  addField(doc, "Category", record.category, 25, 149, 75);
-  addField(doc, "Subject", record.subject, 110, 149, 75);
-  addField(doc, "Document Generated", new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }), 25, 172, 75);
+  doc.roundedRect(14, 58, 182, 180, 3, 3, "S");
+  doc.setFillColor(255, 248, 220);
+  doc.roundedRect(22, 66, 125, 11, 2, 2, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...maroon);
+  doc.text(verificationType === "registration-confirmation" ? "REGISTRATION STATUS: CONFIRMED" : "PARTICIPATION STATUS: REGISTERED", 26, 73);
+  doc.addImage(qr, "PNG", 157, 65, 29, 29);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(107, 66, 38);
+  doc.text("SCAN TO VERIFY", 171.5, 97, { align: "center" });
+
+  addField(doc, "Student Name", record.fullName, 24, 89, 125);
+  addField(doc, "Registration Number", record.registrationNumber, 24, 111, 78);
+  addField(doc, "Document Reference", documentReference, 111, 111, 75);
+  addField(doc, "Father / Guardian", record.fatherName, 24, 133, 78);
+  addField(doc, "School", record.school, 111, 133, 75);
+  addField(doc, "Competition", record.competition, 24, 155, 155);
+  addField(doc, "Category", record.category, 24, 177, 78);
+  addField(doc, "Subject", record.subject, 111, 177, 75);
+  addField(doc, "Language", record.language, 24, 199, 78);
+  addField(doc, "Class / Grade", record.classYear, 111, 199, 75);
+  addField(doc, "Exam Schedule", `${record.examDate} · ${record.examTime}`, 24, 221, 155);
 
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...brown);
-  doc.setFontSize(10);
-  doc.text(doc.splitTextToSize(acknowledgement, 150), 25, 225);
+  doc.setFontSize(8.5);
+  doc.text(doc.splitTextToSize(acknowledgement, 174), 18, 251);
   doc.setTextColor(107, 66, 38);
   doc.setFontSize(8);
-  doc.text("Generated electronically from the student portal registration record.", 105, 278, { align: "center" });
+  doc.text(`Generated ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} · Keep this document for your records.`, 105, 278, { align: "center" });
   doc.save(filename);
 }
 
@@ -63,6 +115,7 @@ export function downloadRegistrationConfirmationPdf(record: StudentRecord) {
     "Registration Confirmation",
     `${record.registrationNumber}-registration-confirmation.pdf`,
     `This document confirms that ${record.fullName} is registered for ${record.competition}. Keep it with your registration number for reference.`,
+    "registration-confirmation",
   );
 }
 
@@ -72,6 +125,7 @@ export function downloadParticipationReceiptPdf(record: StudentRecord) {
     "Competition Participation Receipt",
     `${record.registrationNumber}-participation-receipt.pdf`,
     `This receipt acknowledges ${record.fullName}'s registration to participate in ${record.competition}. It confirms participation registration only; it is not a fee or payment receipt.`,
+    "participation-receipt",
   );
 }
 

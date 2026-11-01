@@ -4,6 +4,7 @@ import { getStudentRecord, subscribeToStudentRecord } from "../lib/studentRecord
 import { supabase } from "../lib/supabase";
 
 const sidebarLinks = [
+  { to: "/student/competitions", label: "Mahotsav Categories", icon: "🏆" },
   { to: "/student", label: "Dashboard", icon: "⊞", end: true },
   { to: "/student/profile", label: "My Profile", icon: "👤" },
   { to: "/student/profile", label: "My Registration", icon: "📋" },
@@ -24,6 +25,7 @@ export default function StudentLayout() {
   const [record, setRecord] = useState(getStudentRecord);
   const [authorized, setAuthorized] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
+  const [accessError, setAccessError] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => subscribeToStudentRecord(() => setRecord(getStudentRecord())), []);
@@ -42,15 +44,27 @@ export default function StudentLayout() {
         denyAccess();
         return;
       }
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
         denyAccess();
         return;
       }
-      const { data: profile, error } = await supabase.from("profiles").select("role").eq("id", auth.user.id).single();
+      const { error: syncError } = await supabase.functions.invoke("sync-supabase-profile");
+      if (syncError) {
+        if (active) {
+          setAccessError(`Student profile setup failed: ${syncError.message}. Confirm the sync-supabase-profile function is deployed and its SQL migration has been applied.`);
+          setCheckingAccess(false);
+        }
+        return;
+      }
+      const { data: profile, error } = await supabase.from("profiles").select("role").eq("id", user.id).single();
       if (error || profile?.role !== "student") {
-        await supabase.auth.signOut();
-        denyAccess();
+        if (active) {
+          setAccessError(error
+            ? `Could not load your Supabase profile: ${error.message}. Check that the database setup SQL has been applied.`
+            : "This Supabase account is not assigned the student role. Ask an administrator to check its profile role.");
+          setCheckingAccess(false);
+        }
         return;
       }
       if (active) {
@@ -63,7 +77,6 @@ export default function StudentLayout() {
     const { data: { subscription } } = supabase?.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") denyAccess();
     }) ?? { data: { subscription: null } };
-
     return () => {
       active = false;
       subscription?.unsubscribe();
@@ -72,6 +85,9 @@ export default function StudentLayout() {
 
   if (checkingAccess) {
     return <div className="min-h-screen bg-cream flex items-center justify-center text-brown-mid">Checking student account…</div>;
+  }
+  if (accessError) {
+    return <div className="flex min-h-screen items-center justify-center bg-cream px-4"><section className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-6 shadow-sm"><h1 className="text-xl font-bold text-brown">Your account signed in, but the student portal could not load</h1><p role="alert" className="mt-3 break-words text-sm text-brown-mid">{accessError}</p><div className="mt-5 flex gap-3"><button onClick={() => window.location.reload()} className="rounded-lg bg-maroon px-4 py-2 text-sm font-semibold text-cream">Try again</button><button onClick={async () => { await supabase?.auth.signOut(); navigate("/login", { replace: true }); }} className="rounded-lg border border-cream-dark px-4 py-2 text-sm font-semibold text-brown">Sign out</button></div></section></div>;
   }
   if (!authorized) return null;
 
@@ -136,7 +152,7 @@ export default function StudentLayout() {
 
         <div className="p-4 border-t border-white/10">
           <button
-            onClick={() => navigate("/")}
+            onClick={async () => { await supabase?.auth.signOut(); navigate("/", { replace: true }); }}
             className={`flex items-center gap-3 text-sm text-white/60 hover:text-red-300 transition-colors w-full`}
           >
             <span>🚪</span>

@@ -29,7 +29,12 @@ export default function VerifyDocument() {
             <p className="text-sm text-brown-mid mt-2">This document was issued by Maharshi Panini Ved Vedang Vidhyapeeth Gurukul.</p>
             <div className="bg-cream-dark rounded-xl p-5 text-left mt-6 space-y-3">
               {[
-                ["Document", type === "admit-card" ? "Examination Admit Card" : "Certificate of Achievement"],
+                ["Document", ({
+                  "admit-card": "Examination Admit Card",
+                  certificate: "Certificate of Achievement",
+                  "registration-confirmation": "Registration Confirmation",
+                  "participation-receipt": "Competition Participation Receipt",
+                } as Record<string, string>)[type || ""] || "Official Student Document"],
                 ["Candidate", name || ""],
                 ["Registration No.", registration || ""],
                 ["Document No.", documentNumber || ""],

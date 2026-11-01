@@ -7,8 +7,6 @@ const statusSteps = [
   { label: "Documents Verification", done: true },
   { label: "Approved", done: true },
   { label: "Admit Card Generated", done: false, current: true },
-  { label: "Exam Scheduled", done: false },
-  { label: "Exam Completed", done: false },
   { label: "Result Published", done: false },
   { label: "Certificate Generated", done: false },
 ];

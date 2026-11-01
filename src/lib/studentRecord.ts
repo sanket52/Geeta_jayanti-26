@@ -107,8 +107,15 @@ export function createVerificationToken(type: string, registration: string, name
   return (hash >>> 0).toString(36).toUpperCase();
 }
 
-export function createVerificationUrl(type: "admit-card" | "certificate", record: StudentRecord) {
-  const documentNumber = type === "admit-card" ? record.rollNumber : record.certificateNumber;
+export type VerificationDocumentType = "admit-card" | "certificate" | "registration-confirmation" | "participation-receipt";
+
+export function createVerificationUrl(type: VerificationDocumentType, record: StudentRecord) {
+  const documentNumber = {
+    "admit-card": record.rollNumber,
+    certificate: record.certificateNumber,
+    "registration-confirmation": `${record.registrationNumber}-REG`,
+    "participation-receipt": `${record.registrationNumber}-PART`,
+  }[type];
   const params = new URLSearchParams({
     type,
     registration: record.registrationNumber,

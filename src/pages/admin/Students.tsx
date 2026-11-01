@@ -1,224 +1,154 @@
-import { useEffect, useMemo, useState } from "react";
-import { downloadCsv, downloadStudentsPdf } from "../../lib/adminExport";
-import {
-  getErpStudents,
-  saveErpStudents,
-  subscribeToErp,
-  type ErpStudent as Student,
-  type ErpStudentStatus as StudentStatus,
-} from "../../lib/erpStore";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "../../lib/supabase";
 
-const statusColors: Record<StudentStatus, string> = {
-  Approved: "bg-green-100 text-green-700",
-  Pending: "bg-amber-100 text-amber-700",
-  Rejected: "bg-red-100 text-red-700",
+type Registration = {
+  id: string;
+  registration_number: string;
+  email: string;
+  full_name: string;
+  mobile: string;
+  school_name: string;
+  education_level: string;
+  city: string;
+  state: string;
+  district?: string | null;
+  bank_account_last4?: string | null;
+  selected_competition_codes?: string[] | null;
+  status: "Pending" | "Approved" | "Rejected";
+  submitted_at: string;
+};
+
+const statusStyle: Record<Registration["status"], string> = {
+  Pending: "bg-amber-100 text-amber-800",
+  Approved: "bg-green-100 text-green-800",
+  Rejected: "bg-red-100 text-red-800",
 };
 
 export default function AdminStudents() {
-  const [students, setStudents] = useState<Student[]>(getErpStudents);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [filter, setFilter] = useState("All");
   const [stateFilter, setStateFilter] = useState("All");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Student | null>(null);
-  const [savedMessage, setSavedMessage] = useState("");
+  const [districtFilter, setDistrictFilter] = useState("All");
+  const [competitionFilter, setCompetitionFilter] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [documentLinks, setDocumentLinks] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    return subscribeToErp(() => setStudents(getErpStudents()));
+  const loadRegistrations = useCallback(async () => {
+    if (!supabase) { setError("Supabase is not configured."); setLoading(false); return; }
+    const { data, error: loadError } = await supabase
+      .from("candidate_registrations")
+      .select("id, registration_number, email, full_name, mobile, school_name, education_level, city, state, district, bank_account_last4, selected_competition_codes, status, submitted_at")
+      .order("submitted_at", { ascending: false });
+    if (loadError) setError(loadError.message);
+    else { setRegistrations((data ?? []) as Registration[]); setError(""); }
+    setLoading(false);
   }, []);
 
-  const filtered = useMemo(() => students.filter((student) => {
-    const term = search.toLowerCase();
-    const matchesSearch = !term || [student.name, student.id, student.mobile, student.email].some((value) => value.toLowerCase().includes(term));
-    return matchesSearch && (statusFilter === "All" || student.status === statusFilter) && (stateFilter === "All" || student.state === stateFilter);
-  }), [students, search, statusFilter, stateFilter]);
+  useEffect(() => { void loadRegistrations(); }, [loadRegistrations]);
 
-  const states = [...new Set(students.map((student) => student.state))].sort();
-
-  const openStudent = (student: Student) => {
-    setSelectedId(student.id);
-    setDraft({ ...student });
-    setSavedMessage("");
+  const review = async (registrationId: string, status: Registration["status"]) => {
+    if (!supabase) return;
+    setSaving(registrationId);
+    setError("");
+    setMessage("");
+    const { error: reviewError } = await supabase.rpc("review_candidate_registration", {
+      p_registration_id: registrationId,
+      p_status: status,
+    });
+    if (reviewError) setError(reviewError.message);
+    else {
+      setMessage(`Registration marked ${status.toLowerCase()}.`);
+      await loadRegistrations();
+    }
+    setSaving(null);
   };
 
-  const saveStudent = () => {
-    if (!draft) return;
-    const updated = students.map((student) => student.id === draft.id ? { ...draft, lastUpdated: new Date().toLocaleString("en-IN") } : student);
-    saveErpStudents(updated);
-    setSavedMessage("Student details saved successfully.");
-  };
+  const filtered = useMemo(() => registrations.filter((item) => {
+    const term = search.trim().toLowerCase();
+    const matches = !term || [item.full_name, item.registration_number, item.email, item.mobile, item.school_name].some((value) => value.toLowerCase().includes(term));
+    return matches && (filter === "All" || item.status === filter)
+      && (stateFilter === "All" || item.state === stateFilter)
+      && (districtFilter === "All" || item.district === districtFilter)
+      && (competitionFilter === "All" || item.selected_competition_codes?.includes(competitionFilter));
+  }), [registrations, search, filter, stateFilter, districtFilter, competitionFilter]);
 
-  const updateStatus = (status: StudentStatus) => {
-    if (!draft) return;
-    const updated = { ...draft, status, lastUpdated: new Date().toLocaleString("en-IN") };
-    setDraft(updated);
-    saveErpStudents(students.map((student) => student.id === updated.id ? updated : student));
-    setSavedMessage(`Student marked as ${status.toLowerCase()}.`);
+  const openDocument = async (registrationId: string, kind: "photo" | "aadhaar") => {
+    if (!supabase) return;
+    setError("");
+    const { data: doc, error: docError } = await supabase.from("gjm_registration_documents").select("storage_path").eq("registration_id", registrationId).eq("kind", kind).maybeSingle();
+    if (docError || !doc) { setError(docError?.message || "Document unavailable."); return; }
+    const { data, error: urlError } = await supabase.storage.from("student-registration-documents").createSignedUrl(doc.storage_path, 120);
+    if (urlError || !data?.signedUrl) { setError(urlError?.message || "Could not open private document."); return; }
+    setDocumentLinks((current) => ({ ...current, [`${registrationId}:${kind}`]: data.signedUrl }));
   };
-
-  const exportStudents = (records: Student[], suffix: string) => {
-    downloadCsv(
-      `students-${suffix}-2026.csv`,
-      ["Registration Number", "Name", "Father Name", "Date of Birth", "Email", "Mobile", "State", "District", "Category", "Subject", "Status", "Written Exam", "Written Score", "Oral Exam", "Oral Score", "Result Status", "Certificate Status", "Registration Date", "Last Updated"],
-      records.map((student) => [student.id, student.name, student.fatherName, student.dob, student.email, student.mobile, student.state, student.district, student.category, student.subject, student.status, student.writtenExamStatus, student.writtenScore, student.oralExamStatus, student.oralScore, student.resultStatus, student.certificateStatus, student.date, student.lastUpdated])
-    );
-  };
+  const states = useMemo(() => Array.from(new Set(registrations.map((r) => r.state))).sort(), [registrations]);
+  const districts = useMemo(() => Array.from(new Set(registrations.filter((r) => stateFilter === "All" || r.state === stateFilter).map((r) => r.district).filter((v): v is string => Boolean(v)))).sort(), [registrations, stateFilter]);
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <h1 style={{ fontFamily: "var(--font-display)" }} className="text-2xl font-bold text-brown">Student Management</h1>
-          <p className="text-sm text-brown-mid">{filtered.length} students shown · {students.filter((student) => student.status === "Pending").length} pending approval</p>
+          <h1 style={{ fontFamily: "var(--font-display)" }} className="text-2xl font-bold text-brown">Candidate Registrations</h1>
+          <p className="mt-1 text-sm text-brown-mid">Verified applications stored in Supabase</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => downloadStudentsPdf(students)} className="px-4 py-2 border border-gold text-gold rounded-lg font-semibold text-sm hover:bg-gold/10 transition-colors">
-            Export All PDF
-          </button>
-          <button onClick={() => exportStudents(filtered, "filtered")} className="px-4 py-2 border border-maroon text-maroon rounded-lg font-semibold text-sm hover:bg-maroon/5 transition-colors">
-            Export Filtered
-          </button>
-          <button onClick={() => exportStudents(students, "all")} className="px-4 py-2 bg-maroon text-cream rounded-lg font-semibold text-sm hover:bg-maroon-dark transition-colors">
-            Export All Students
-          </button>
-        </div>
+        <button onClick={() => { setLoading(true); void loadRegistrations(); }} className="rounded-lg border border-maroon px-4 py-2 text-sm font-semibold text-maroon hover:bg-maroon/5">Refresh list</button>
+      </header>
+
+      <div className="grid grid-cols-3 gap-3">
+        {(["Pending", "Approved", "Rejected"] as const).map((status) => <div key={status} className="rounded-xl border border-cream-dark bg-cream p-4">
+          <p className="text-xs text-brown-mid">{status}</p><p className="mt-1 text-2xl font-bold text-maroon">{registrations.filter((item) => item.status === status).length}</p>
+        </div>)}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          ["Total Students", students.length],
-          ["Approved", students.filter((student) => student.status === "Approved").length],
-          ["Pending", students.filter((student) => student.status === "Pending").length],
-          ["Rejected", students.filter((student) => student.status === "Rejected").length],
-        ].map(([label, value]) => (
-          <div key={label} className="bg-cream border border-cream-dark rounded-xl p-4">
-            <p className="text-xs text-brown-mid">{label}</p>
-            <p className="text-2xl font-bold text-maroon mt-1">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-cream border border-cream-dark rounded-xl p-4 flex flex-wrap gap-3">
-        <input
-          type="search"
-          placeholder="Search name, registration, mobile, or email"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          className="flex-1 min-w-64 border border-cream-dark rounded-lg px-4 py-2 text-sm text-brown focus:border-gold focus:outline-none"
-        />
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="border border-cream-dark rounded-lg px-3 py-2 text-sm text-brown focus:border-gold focus:outline-none">
-          <option value="All">All statuses</option>
-          <option>Pending</option><option>Approved</option><option>Rejected</option>
+      <div className="grid gap-3 rounded-xl border border-cream-dark bg-cream p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, registration, or school" className="min-w-0 flex-1 rounded-lg border border-cream-dark px-4 py-2 text-sm outline-none focus:border-gold" />
+        <select value={filter} onChange={(event) => setFilter(event.target.value)} className="rounded-lg border border-cream-dark px-3 py-2 text-sm outline-none focus:border-gold">
+          <option>All</option><option>Pending</option><option>Approved</option><option>Rejected</option>
         </select>
-        <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} className="border border-cream-dark rounded-lg px-3 py-2 text-sm text-brown focus:border-gold focus:outline-none">
-          <option value="All">All states</option>
-          {states.map((state) => <option key={state}>{state}</option>)}
-        </select>
+        <select value={stateFilter} onChange={(event) => { setStateFilter(event.target.value); setDistrictFilter("All"); }} className="rounded-lg border border-cream-dark px-3 py-2 text-sm outline-none focus:border-gold"><option value="All">All states</option>{states.map((s) => <option key={s}>{s}</option>)}</select>
+        <select value={districtFilter} onChange={(event) => setDistrictFilter(event.target.value)} className="rounded-lg border border-cream-dark px-3 py-2 text-sm outline-none focus:border-gold"><option value="All">All districts</option>{districts.map((d) => <option key={d}>{d}</option>)}</select>
+        <select value={competitionFilter} onChange={(event) => setCompetitionFilter(event.target.value)} className="rounded-lg border border-cream-dark px-3 py-2 text-sm outline-none focus:border-gold"><option value="All">All competitions</option><option value="shloka_uccharan">Shloka Uccharan</option><option value="geeta_quiz">Geeta Quiz</option><option value="digital_bhashan">Digital Bhashan</option><option value="geeta_art">Geeta Art</option></select>
       </div>
 
-      <div>
-        <div className="bg-cream border border-cream-dark rounded-2xl overflow-x-auto shadow-sm">
-          <table className="w-full text-sm min-w-200">
-            <thead>
-              <tr className="bg-cream-dark/60">
-                {["Student", "Contact", "Location", "Category", "Registered", "Status", "Action"].map((heading) => (
-                  <th key={heading} className="text-left px-4 py-3 text-xs font-semibold text-brown-mid uppercase tracking-wide">{heading}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((student) => (
-                <tr key={student.id} className={`border-t border-cream-dark hover:bg-cream-dark/30 ${selectedId === student.id ? "bg-gold/10" : ""}`}>
-                  <td className="px-4 py-3"><p className="font-semibold text-brown">{student.name}</p><p className="text-xs text-brown-mid">{student.id}</p></td>
-                  <td className="px-4 py-3"><p className="text-brown">{student.email}</p><p className="text-xs text-brown-mid">{student.mobile}</p></td>
-                  <td className="px-4 py-3 text-brown-mid">{student.district}, {student.state}</td>
-                  <td className="px-4 py-3"><p className="text-brown">{student.category}</p><p className="text-xs text-brown-mid">{student.subject}</p></td>
-                  <td className="px-4 py-3 text-brown-mid">{student.date}</td>
-                  <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusColors[student.status]}`}>{student.status}</span></td>
-                  <td className="px-4 py-3">
-                    <button type="button" onClick={() => openStudent(student)} className="px-3 py-1.5 border border-maroon text-xs font-semibold text-maroon rounded-lg hover:bg-maroon hover:text-cream transition-colors">
-                      View / Edit
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!filtered.length && <p className="text-center text-sm text-brown-mid py-10">No students match the selected filters.</p>}
-        </div>
-
-      </div>
-
-      {draft && (
-        <div className="fixed inset-0 z-50 bg-brown/60 flex justify-end" onMouseDown={() => { setDraft(null); setSelectedId(null); }}>
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Edit ${draft.name}`}
-            className="w-full sm:w-112 h-full bg-cream border-l-2 border-gold shadow-2xl overflow-y-auto"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="sticky top-0 z-10 bg-maroon-dark text-cream px-6 py-5 flex items-start justify-between border-b-2 border-gold">
-              <div>
-                <p className="text-gold text-xs font-semibold uppercase tracking-widest">Student Record</p>
-                <h2 style={{ fontFamily: "var(--font-display)" }} className="text-xl font-bold mt-1">View & Edit Student</h2>
-                <p className="text-xs text-cream/60 mt-1">{draft.id}</p>
-              </div>
-              <button type="button" onClick={() => { setDraft(null); setSelectedId(null); }} className="text-cream/70 hover:text-cream text-sm border border-white/20 rounded-lg px-3 py-1.5">
-                Close
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="flex items-center justify-between bg-cream-dark rounded-xl p-4 mb-5">
-                <div>
-                  <p className="text-xs text-brown-mid">Current status</p>
-                  <p className="font-semibold text-brown mt-1">{draft.status}</p>
+      {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {message && <p role="status" className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{message}</p>}
+      {loading ? <div className="rounded-xl border border-cream-dark bg-cream p-10 text-center text-sm text-brown-mid">Loading registrations…</div> : (
+        <div className="space-y-3">
+          {filtered.map((item) => <article key={item.id} className="rounded-2xl border border-cream-dark bg-cream p-5 shadow-sm">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-semibold text-brown">{item.full_name}</h2>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle[item.status]}`}>{item.status}</span>
                 </div>
-                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${statusColors[draft.status]}`}>{draft.status}</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  ["name", "Full Name", "text"],
-                  ["fatherName", "Father's Name", "text"],
-                  ["dob", "Date of Birth", "text"],
-                  ["email", "Email", "email"],
-                  ["mobile", "Mobile", "tel"],
-                  ["district", "District", "text"],
-                  ["state", "State", "text"],
-                  ["subject", "Subject", "text"],
-                ].map(([key, label, type]) => (
-                  <label key={key} className={`block ${key === "name" || key === "email" ? "sm:col-span-2" : ""}`}>
-                    <span className="block text-xs font-medium text-brown-mid mb-1">{label}</span>
-                    <input type={type} value={String(draft[key as keyof Student] ?? "")} onChange={(event) => { setDraft({ ...draft, [key]: event.target.value }); setSavedMessage(""); }} className="w-full border border-cream-dark rounded-lg px-3 py-2.5 text-sm text-brown focus:border-gold focus:outline-none" />
-                  </label>
-                ))}
-                <label className="block">
-                  <span className="block text-xs font-medium text-brown-mid mb-1">Category</span>
-                  <select value={draft.category} onChange={(event) => { setDraft({ ...draft, category: event.target.value }); setSavedMessage(""); }} className="w-full border border-cream-dark rounded-lg px-3 py-2.5 text-sm text-brown focus:border-gold focus:outline-none">
-                    <option>Junior</option><option>Senior</option><option>Youth</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="block text-xs font-medium text-brown-mid mb-1">Registration Date</span>
-                  <input value={draft.date} onChange={(event) => { setDraft({ ...draft, date: event.target.value }); setSavedMessage(""); }} className="w-full border border-cream-dark rounded-lg px-3 py-2.5 text-sm text-brown focus:border-gold focus:outline-none" />
-                </label>
-              </div>
-
-              {savedMessage && <p className="mt-4 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">{savedMessage}</p>}
-
-              <div className="sticky bottom-0 bg-cream pt-5 pb-1 mt-2">
-                <button type="button" onClick={saveStudent} className="w-full bg-maroon text-cream rounded-lg py-3 text-sm font-semibold hover:bg-maroon-dark transition-colors">
-                  Save Student Changes
-                </button>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <button type="button" onClick={() => updateStatus("Approved")} className="border border-green-600 text-green-700 rounded-lg py-2.5 text-xs font-semibold hover:bg-green-50">Approve Student</button>
-                  <button type="button" onClick={() => updateStatus("Rejected")} className="border border-red-600 text-red-700 rounded-lg py-2.5 text-xs font-semibold hover:bg-red-50">Reject Student</button>
+                <p className="mt-1 text-xs text-brown-mid">{item.registration_number} · Submitted {new Date(item.submitted_at).toLocaleDateString()}</p>
+                <div className="mt-4 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                  <p className="break-all text-brown-mid">Email: <span className="text-brown">{item.email}</span></p>
+                  <p className="text-brown-mid">Mobile: <span className="text-brown">{item.mobile}</span></p>
+                  <p className="text-brown-mid">School: <span className="text-brown">{item.school_name}</span></p>
+                  <p className="text-brown-mid">Class: <span className="text-brown">{item.education_level}</span></p>
+                  <p className="text-brown-mid sm:col-span-2">Location: <span className="text-brown">{item.city}, {item.state}</span></p>
+                  {item.district && <p className="text-brown-mid">District: <span className="text-brown">{item.district}</span></p>}
+                  {item.bank_account_last4 && <p className="text-brown-mid">Bank account: <span className="text-brown">••••{item.bank_account_last4}</span></p>}
+                  {item.selected_competition_codes?.length ? <p className="text-brown-mid sm:col-span-2">Categories: <span className="text-brown">{item.selected_competition_codes.join(", ")}</span></p> : null}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(["photo", "aadhaar"] as const).map((kind) => documentLinks[`${item.id}:${kind}`]
+                    ? <a key={kind} href={documentLinks[`${item.id}:${kind}`]} target="_blank" rel="noreferrer" className="rounded-lg border border-maroon px-3 py-2 text-xs font-semibold text-maroon hover:bg-maroon/5">Open {kind === "photo" ? "photo" : "private Aadhaar"} (2 minute link)</a>
+                    : <button key={kind} type="button" onClick={() => void openDocument(item.id, kind)} className="rounded-lg border border-maroon px-3 py-2 text-xs font-semibold text-maroon hover:bg-maroon/5">Create {kind === "photo" ? "photo" : "private Aadhaar"} link</button>)}
                 </div>
               </div>
+              {item.status === "Pending" && <div className="flex shrink-0 gap-2 sm:flex-col">
+                <button disabled={saving === item.id} onClick={() => void review(item.id, "Approved")} className="rounded-lg bg-green-700 px-4 py-2 text-xs font-semibold text-white hover:bg-green-800 disabled:opacity-50">Approve</button>
+                <button disabled={saving === item.id} onClick={() => void review(item.id, "Rejected")} className="rounded-lg border border-red-600 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Reject</button>
+              </div>}
             </div>
-          </aside>
+          </article>)}
+          {!filtered.length && <div className="rounded-xl border border-cream-dark bg-cream p-10 text-center text-sm text-brown-mid">No registrations match this search.</div>}
         </div>
       )}
     </div>
